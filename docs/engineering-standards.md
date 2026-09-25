@@ -2,9 +2,16 @@
 
 ## Stack
 
+- Language: TypeScript, strict mode, ESM (`"type": "module"`), on Node 22 (`.nvmrc`)
+- Module resolution: `NodeNext`, so relative imports carry the `.js` extension:
+  `import { x } from "./source-kind.js"`
+- Tests: Vitest (`npm run test` runs `vitest run`)
+- Lint: ESLint with typescript-eslint's `recommended` rules, over `src/` and `tests/`
+- Typecheck: `tsc --noEmit`
 - Package manager: npm
+- Pipeline: a command-line tool runs it
+- Review queue: a local web page served by Vite
 - Dev server: `npm run dev` — http://localhost:5173
-- (Fill in: language, framework, build tool)
 
 ## Layout
 
