@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "requirements": {
+      "type": "http",
+      "url": "${REQUIREMENTS_MCP_URL:-http://localhost:3000/mcp}"
+    }
+  }
+}

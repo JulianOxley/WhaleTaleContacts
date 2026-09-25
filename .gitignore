@@ -1,0 +1,4 @@
+node_modules/
+dist/
+.claude/settings.local.json
+# plans are committed in this repo — see docs/plan-policy.md

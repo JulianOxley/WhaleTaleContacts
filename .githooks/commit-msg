@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Refuses a commit message that does not carry the ticket key first.
+# Installed via core.hooksPath by `npm ci` (see package.json "prepare" script).
+set -euo pipefail
+
+MSG_FILE="$1"
+FIRST_LINE="$(head -n1 "$MSG_FILE")"
+PATTERN='^WTC-[0-9]+: '
+
+if ! [[ "$FIRST_LINE" =~ $PATTERN ]]; then
+  echo "Commit message must start with an issue key: 'WTC-<n>: <summary>'" >&2
+  echo "Got: $FIRST_LINE" >&2
+  echo "If this work belongs to no ticket, it is not ready to commit." >&2
+  exit 1
+fi

@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Refuses to push a branch that does not carry an issue key, unless it matches the
+# integration-branch pattern (demo-*), which carries a key differently
+# (e.g. demo-sr-WTC-17) and is checked by the same pattern below.
+set -euo pipefail
+
+BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+
+if [[ "$BRANCH" == "main" ]]; then
+  echo "Nothing is committed directly to main. Push a branch and open a PR." >&2
+  exit 1
+fi
+
+KEY_PATTERN='WTC-[0-9]+'
+
+if ! [[ "$BRANCH" =~ $KEY_PATTERN ]]; then
+  echo "Branch '$BRANCH' does not carry an issue key (WTC-<n>)." >&2
+  echo "Expected something like: feat/WTC-14-rules-engine" >&2
+  echo "or an integration branch matching: demo-*" >&2
+  exit 1
+fi
