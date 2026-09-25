@@ -1,0 +1,41 @@
+name: verify
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches:
+      - main
+      - "demo-*"
+      # Integration branches run through the same gate as main. Locally you can merge several
+      # ticket branches together and run npm run verify by hand, but a human forgetting to do
+      # that after a merge is exactly the gap this trigger exists to close.
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # the plan check diffs against origin/main, which a shallow clone lacks
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "npm"
+
+      - run: npm ci
+
+      - name: npm run verify
+        run: npm run verify
+
+      - name: Validate any plan files touched by this change
+        run: |
+          CHANGED_PLANS=$(git diff --name-only origin/main...HEAD -- '.claude/plans/*.md' || true)
+          if [ -n "$CHANGED_PLANS" ]; then
+            node scripts/check-plan.mjs $CHANGED_PLANS
+          else
+            echo "No plan files changed in this diff."
+          fi
+        # Only meaningful when planArchiving is enabled (plans are committed, not gitignored).
+        # If plans are gitignored in this repo, this step will always report nothing changed.

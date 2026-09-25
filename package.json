@@ -1,0 +1,13 @@
+{
+  "name": "contactsdatacleaner",
+  "private": true,
+  "scripts": {
+    "dev": "echo 'no dev server yet'",
+    "typecheck": "echo 'no typecheck yet'",
+    "lint": "echo 'no lint yet'",
+    "test": "echo 'no tests yet'",
+    "verify": "npm run typecheck && npm run lint && npm run test",
+    "prepare": "git config core.hooksPath .githooks",
+    "check:plans": "node scripts/check-plan.mjs .claude/plans/*.md"
+  }
+}
