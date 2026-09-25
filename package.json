@@ -1,13 +1,25 @@
 {
   "name": "contactsdatacleaner",
   "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
     "dev": "echo 'no dev server yet'",
-    "typecheck": "echo 'no typecheck yet'",
-    "lint": "echo 'no lint yet'",
-    "test": "echo 'no tests yet'",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
     "verify": "npm run typecheck && npm run lint && npm run test",
     "prepare": "git config core.hooksPath .githooks",
     "check:plans": "node scripts/check-plan.mjs .claude/plans/*.md"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.4",
+    "eslint": "^10.11.0",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.70.1",
+    "vitest": "^5.0.2"
   }
 }
