@@ -2,16 +2,21 @@
 
 ## Stack
 
-- Language: TypeScript, strict mode, ESM (`"type": "module"`), on Node 22 (`.nvmrc`)
+- Language: TypeScript, strict mode, ESM (`"type": "module"`), on Node 22.12 or later (`.nvmrc`,
+  `engines`)
 - Module resolution: `NodeNext`, so relative imports carry the `.js` extension:
   `import { x } from "./source-kind.js"`
+- Build: `npm run build` compiles `src/` to `dist/` with `tsc -p tsconfig.build.json`. The CLI
+  runs from the compiled output under `dist/`, not from `.ts` sources
+- Typecheck: `tsc --noEmit`, over `src/` and `tests/`
 - Tests: Vitest (`npm run test` runs `vitest run`)
-- Lint: ESLint with typescript-eslint's `recommended` rules, over `src/` and `tests/`
-- Typecheck: `tsc --noEmit`
-- Package manager: npm
+- Lint: `eslint .` applies typescript-eslint's `recommended` rules to `src/**/*.ts` and
+  `tests/**/*.ts`. ESLint also parses the repo's own `.js`/`.mjs` files, with no rules; `dist/`
+  is ignored
+- Package manager: npm. TypeScript is pinned to `~6.0` because typescript-eslint does not yet
+  support 6.1
 - Pipeline: a command-line tool runs it
 - Review queue: a local web page served by Vite
-- Dev server: `npm run dev` — http://localhost:5173
 
 ## Layout
 

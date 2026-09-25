@@ -2,7 +2,11 @@
   "name": "contactsdatacleaner",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
     "dev": "echo 'no dev server yet'",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
@@ -14,7 +18,7 @@
   "devDependencies": {
     "@types/node": "^22.20.4",
     "eslint": "^10.11.0",
-    "typescript": "^6.0.3",
+    "typescript": "~6.0.3",
     "typescript-eslint": "^8.70.1",
     "vitest": "^5.0.2"
   }

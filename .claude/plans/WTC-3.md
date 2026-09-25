@@ -21,6 +21,19 @@ thin: false
 - **`@types/node@22` is added now.**
 - **Build order:** the user has updated WTC-10 so WTC-3 comes first (confirmed in the tracker).
 
+### After review (user, 2026-09-25)
+
+- **The CLI runs from a tsc build to `dist/`.** `npm run build` runs `tsc -p tsconfig.build.json`,
+  which compiles `src/` only. Until WTC-11 adds `src/`, it reports "No inputs were found"
+  (TS18003). It is not part of `verify`.
+- **TypeScript pinned to `~6.0.3`**, because typescript-eslint 8.70 supports `<6.1.0`.
+- **`"engines": { "node": ">=22.12" }`**, the floor Vitest 5 needs. ESLint 10 needs 22.13 or later
+  on the 22 line. Resolves Open question 8.
+- **Docs:** the lint line now says what `eslint .` visits. The dev server line is removed until
+  WTC-18. Resolves Open question 10.
+- The `dist/` ignore in `eslint.config.js` is **not** redundant, whatever the tester's note says.
+  Flat config always parses `**/*.js`, so without the ignore, build output would be linted.
+
 ## Sources fetched
 
 | Source | How reached | Notes |
@@ -58,7 +71,7 @@ Tags: [WTC-3] means stated in the ticket. [CKB-9] and [WTC-10 DoD] mean from tho
 6. [WTC-3] `npm run lint` runs ESLint over `src` and `tests`. The config applies typescript-eslint's `recommended` config and little else, and the command exits 0 on the committed tree.
 7. [WTC-3, **proposed** check] Lint is real and not a stub. If you temporarily add a file under `tests/` (or `src/`) containing an explicit `any` or an unused variable, `npm run lint` exits non-zero. If you temporarily add a strict-mode violation, such as a parameter with an implicit `any`, `npm run typecheck` exits non-zero. Neither probe file is committed.
 8. [**proposed**] `npm run verify` (typecheck, then lint, then test) exits 0, and none of the three scripts is an `echo` any more.
-9. [**proposed**] `npm ci` succeeds from a clean clone. `package-lock.json` is regenerated and committed, and it matches package.json. `typescript`, `vitest`, `eslint` and `typescript-eslint` are `devDependencies` (plus `@eslint/js` / `@types/node` only if used; see Open questions 4 and 5).
+9. [**proposed**] `npm ci` succeeds from a clean clone. `package-lock.json` is regenerated and committed, and it matches package.json. `typescript`, `vitest`, `eslint` and `typescript-eslint` are `devDependencies` plus `@types/node@22` (Decisions). `@eslint/js` is not used.
 10. [WTC-3, CKB-9] `.nvmrc` contains `22`.
 11. [WTC-3] The Stack section of docs/engineering-standards.md states: TypeScript (strict, ESM) on Node 22, Vitest for tests, ESLint with typescript-eslint, npm as package manager, a CLI that runs the pipeline, and a review queue served locally by Vite. **[proposed]** No other section of that file changes in this ticket. The Stack section records *how* the repo is built and does not copy requirement text beyond what CKB-9's Stack section says (AGENTS.md: "Nothing in docs/ restates a requirement").
 12. [**proposed**] The `dev`, `prepare` and `check:plans` scripts are unchanged. Vite is **not** installed here, because it belongs to the review queue ticket (WTC-18).
@@ -118,20 +131,22 @@ The tester writes no extra tests. The ticket asks for exactly *one* trivial test
 - The plan-check step will validate `.claude/plans/WTC-3.md` (and `WTC-11.md`, if it is committed on this branch) because they appear in the diff. Both need valid frontmatter.
 - Branch `chore/WTC-3-toolchain` carries the key, so it satisfies pre-push. Commits must start with `WTC-3: `.
 
-## Open questions (not decided here)
+## Open questions
 
-1. **Build order.** WTC-10 lists the build order as WTC-11, WTC-20, … and does not mention WTC-3. The user has placed WTC-3 before WTC-11, and in practice WTC-11 cannot be tested without it. Consider updating the epic's build order so the tracker matches reality.
-2. **Owner.** See the Owner section. The session is recommended, and this needs user approval.
-3. **Module resolution.** `NodeNext` requires `.js` extensions in relative imports. `Bundler` (with `module: ESNext`) does not, and it suits the later Vite review queue, but it lets Node-incompatible import paths through for the CLI. This choice affects every later ticket's import style, so the user or developer should decide it deliberately and write the decision into the Stack section.
-4. **"Minimal" ESLint config.** Should it be typescript-eslint `recommended` only, or also `@eslint/js` recommended, which the typescript-eslint docs pair with it? The ticket names only typescript-eslint. The planner leans towards typescript-eslint only, to match the ticket's wording.
-5. **`@types/node`.** It is not needed for the trivial test. The WTC-11 purity test reads files, and CKB-9 has the CLI on Node 22, so adding `@types/node@22` now avoids a package.json edit later. It is optional, and it is not required by WTC-3.
-6. **Empty `src/`.** `eslint src tests` errors when `src` does not exist, and there is no `src/` until WTC-11. Options:
+Questions 1–6, 8 and 10 are resolved in the Decisions section above. 7 and 9 remain open.
+
+1. **[Resolved: WTC-10 updated]** **Build order.** WTC-10 lists the build order as WTC-11, WTC-20, … and does not mention WTC-3. The user has placed WTC-3 before WTC-11, and in practice WTC-11 cannot be tested without it. Consider updating the epic's build order so the tracker matches reality.
+2. **[Resolved: session-built]** **Owner.** See the Owner section. The session is recommended, and this needs user approval.
+3. **[Resolved: NodeNext]** **Module resolution.** `NodeNext` requires `.js` extensions in relative imports. `Bundler` (with `module: ESNext`) does not, and it suits the later Vite review queue, but it lets Node-incompatible import paths through for the CLI. This choice affects every later ticket's import style, so the user or developer should decide it deliberately and write the decision into the Stack section.
+4. **[Resolved: typescript-eslint only]** **"Minimal" ESLint config.** Should it be typescript-eslint `recommended` only, or also `@eslint/js` recommended, which the typescript-eslint docs pair with it? The ticket names only typescript-eslint. The planner leans towards typescript-eslint only, to match the ticket's wording.
+5. **[Resolved: added]** **`@types/node`.** It is not needed for the trivial test. The WTC-11 purity test reads files, and CKB-9 has the CLI on Node 22, so adding `@types/node@22` now avoids a package.json edit later. It is optional, and it is not required by WTC-3.
+6. **[Resolved: option (b)]** **Empty `src/`.** `eslint src tests` errors when `src` does not exist, and there is no `src/` until WTC-11. Options:
    - (a) `--no-error-on-unmatched-pattern` on the lint script;
    - (b) run `eslint .` with the config's `files` scoped to `src/**` and `tests/**`;
    - (c) commit a placeholder such as `src/.gitkeep`. ESLint may still error with only a dotfile present.
 
    `tsc` is fine as long as `tests/` has a `.ts` file. The developer should choose one and say which. A dummy `.ts` file in `src/` is not recommended.
 7. **Keeping the trivial test.** Should `tests/toolchain.test.ts` be kept after WTC-11 adds real tests, or deleted then? Not decided here.
-8. **`engines` field.** Should package.json also get `"engines": { "node": ">=22" }` so local installs warn on older Node? The ticket does not ask for it. Optional.
+8. **[Resolved: `>=22.12`]** **`engines` field.** Should package.json also get `"engines": { "node": ">=22" }` so local installs warn on older Node? The ticket does not ask for it. Optional.
 9. **Other placeholders in docs/engineering-standards.md.** Layout, "The domain / UI split" and Testing are still "(Fill in …)". The WTC-11 plan suggested filling the domain/UI split from CKB-9, but WTC-3 asks only for Stack. Left out of scope.
-10. **Dev server line.** The Stack section already says `npm run dev` serves http://localhost:5173, but `dev` is still an echo and Vite is not installed. Keep the line as the intended future state, or mark it "from WTC-18"? The developer should not silently rewrite it.
+10. **[Resolved: removed until WTC-18]** **Dev server line.** The Stack section already says `npm run dev` serves http://localhost:5173, but `dev` is still an echo and Vite is not installed. Keep the line as the intended future state, or mark it "from WTC-18"? The developer should not silently rewrite it.
