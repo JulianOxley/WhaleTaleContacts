@@ -78,7 +78,7 @@ Four steps, in this order. Do all of them before writing code.
 
 **Read the comments.** Some tickets carry their only route onward in a comment rather than a link.
 
-`searchIssues` finds work by JQL. It returns summaries only — read a hit properly with
+`searchIssues` finds tickets by text, status or parent. It returns summaries only — read a hit properly with
 `getIssue`.
 
 ## Ground rules
