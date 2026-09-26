@@ -12,6 +12,13 @@ import type { NormalisedFields } from "../../src/model/source-record.js";
 // Criteria covered here (addendum numbering): 5 (replaced by 15), 6 (widened
 // by 16), 15, 16, 17, 18, 19 [proposed], 20 [proposed], 23 [proposed].
 // explain() moved to explain.test.ts.
+//
+// Second review round (2026-09-26): criterion 16 is relaxed -- a non-empty
+// field with zero primaries is valid when every entry in it has inferredBy
+// present (blank or not); more than one primary is always a problem
+// regardless of inferredBy. Criterion 31 removes the self-built runtime
+// "Contact keys are exactly CONTACT_FIELDS" test below (the guarantee is now
+// the mapped type at typecheck, plus the compile-time equality check).
 
 function validBaselineContact(): Contact {
   return {
@@ -53,11 +60,6 @@ describe("CONTACT_FIELDS and Contact shape (criteria 15, 18)", () => {
       "title",
       "linkedinUrl",
     ]);
-  });
-
-  it("gives a Contact whose own keys are exactly CONTACT_FIELDS", () => {
-    const contact = validBaselineContact();
-    expect(Object.keys(contact).sort()).toEqual([...CONTACT_FIELDS].sort());
   });
 
   it("holds a list of { value, sources, primary } for every field, not just emails/phones", () => {
@@ -190,6 +192,90 @@ describe("validateContact: baseline sanity", () => {
   it("has no problems for a fully valid baseline contact", () => {
     expect(validateContact(validBaselineContact())).toEqual([]);
   });
+});
+
+describe("validateContact: criterion 16 as changed (second review round, 2026-09-26)", () => {
+  it.each(CONTACT_FIELDS)(
+    "field %s: a single all-inferred entry with no primary is valid",
+    (field) => {
+      const contact: Contact = {
+        ...validBaselineContact(),
+        [field]: [
+          { value: "Inferred value", sources: ["linkedin:inferred-single"], primary: false, inferredBy: "C2" },
+        ],
+      };
+
+      expect(validateContact(contact)).toEqual([]);
+    },
+  );
+
+  it.each(CONTACT_FIELDS)(
+    "field %s: several all-inferred entries with no primary are valid",
+    (field) => {
+      const contact: Contact = {
+        ...validBaselineContact(),
+        [field]: [
+          { value: "Inferred value A", sources: ["linkedin:inferred-a"], primary: false, inferredBy: "C2" },
+          { value: "Inferred value B", sources: ["linkedin:inferred-b"], primary: false, inferredBy: "C3" },
+        ],
+      };
+
+      expect(validateContact(contact)).toEqual([]);
+    },
+  );
+
+  it.each(CONTACT_FIELDS)(
+    "field %s: one inferred entry plus one non-inferred entry, no primary -> exactly one problem",
+    (field) => {
+      const contact: Contact = {
+        ...validBaselineContact(),
+        [field]: [
+          { value: "Inferred value", sources: ["linkedin:mixed-inferred"], primary: false, inferredBy: "C2" },
+          { value: "Sourced value", sources: ["linkedin:mixed-sourced"], primary: false },
+        ],
+      };
+
+      const problems = validateContact(contact);
+
+      expect(problems).toHaveLength(1);
+      expect(problems[0]?.startsWith(field)).toBe(true);
+    },
+  );
+
+  it.each(CONTACT_FIELDS)(
+    "field %s: two primaries, both inferred -> still exactly one problem",
+    (field) => {
+      const contact: Contact = {
+        ...validBaselineContact(),
+        [field]: [
+          { value: "Inferred value A", sources: ["linkedin:two-primary-a"], primary: true, inferredBy: "C2" },
+          { value: "Inferred value B", sources: ["linkedin:two-primary-b"], primary: true, inferredBy: "C2" },
+        ],
+      };
+
+      const problems = validateContact(contact);
+
+      expect(problems).toHaveLength(1);
+      expect(problems[0]?.startsWith(field)).toBe(true);
+    },
+  );
+
+  it.each(CONTACT_FIELDS)(
+    "field %s: a single entry with a blank inferredBy and no primary -> exactly one problem (the blank inferredBy)",
+    (field) => {
+      const contact: Contact = {
+        ...validBaselineContact(),
+        [field]: [
+          { value: "Blank inferredBy value", sources: ["linkedin:blank-inferred"], primary: false, inferredBy: "  " },
+        ],
+      };
+
+      const problems = validateContact(contact);
+
+      expect(problems).toHaveLength(1);
+      expect(problems[0]?.startsWith(field)).toBe(true);
+    },
+  );
 });
 
 describe("primaryOf (criterion 23 [proposed])", () => {

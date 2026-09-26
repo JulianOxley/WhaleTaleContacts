@@ -240,6 +240,63 @@ describe("createSourceRecord defensive copying (criterion 4)", () => {
     expect(Object.hasOwn(record.normalised, "extra")).toBe(false);
   });
 
+  it('does not create an own "company" key on normalised when no company was given (criterion 30, review round 2 finding 7)', () => {
+    const record = createSourceRecord({
+      source: "linkedin",
+      id: "linkedin:ada-example",
+      raw: { Name: "Ada Example" },
+      normalised: { emails: [], phones: [] },
+    });
+
+    expect("company" in record.normalised).toBe(false);
+  });
+
+  it("lists exactly the present normalised keys, always including emails and phones (criterion 30, review round 2 finding 7)", () => {
+    const record = createSourceRecord({
+      source: "google",
+      id: "google:contact-1",
+      raw: { Name: "Ada Example" },
+      normalised: {
+        fullName: "Ada Example",
+        company: "Example Widgets Ltd",
+        emails: ["ada@example.com"],
+        phones: [],
+      },
+    });
+
+    expect(Object.keys(record.normalised).sort()).toEqual(
+      ["company", "emails", "fullName", "phones"].sort(),
+    );
+  });
+
+  it("lists exactly emails and phones when no optional normalised fields are given (criterion 30, review round 2 finding 7)", () => {
+    const record = createSourceRecord({
+      source: "phone",
+      id: "phone:row-minimal",
+      raw: {},
+      normalised: { emails: [], phones: [] },
+    });
+
+    expect(Object.keys(record.normalised).sort()).toEqual(["emails", "phones"]);
+  });
+
+  it("does not freeze an off-type raw value that is a plain object, in the caller's object (criterion 30, review round 2 finding 7)", () => {
+    const offTypeValue = { unexpected: true };
+    const raw = {
+      Name: "Ada Example",
+      Nested: offTypeValue,
+    } as unknown as RawFields;
+
+    createSourceRecord({
+      source: "linkedin",
+      id: "linkedin:ada-example",
+      raw,
+      normalised: { emails: [], phones: [] },
+    });
+
+    expect(Object.isFrozen(offTypeValue)).toBe(false);
+  });
+
   it("keeps a __proto__ or constructor raw header as an own property, without changing raw's prototype (criterion 4 as changed, finding 6)", () => {
     const raw = JSON.parse('{"__proto__":"x","constructor":"y"}') as RawFields;
 

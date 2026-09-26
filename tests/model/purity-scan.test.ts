@@ -179,6 +179,222 @@ describe("purity scanner: forbidden identifiers and calls", () => {
   });
 });
 
+describe("purity scanner: absolute module specifiers (criterion 25, review round 2 finding 1)", () => {
+  it('flags a POSIX absolute specifier: import x from "/abs/src/ingest/x.js"', () => {
+    expect(
+      scanPurityViolations(`import x from "/abs/src/ingest/x.js";`).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it('flags a Windows drive-letter specifier with a backslash: "C:\\\\Users\\\\x\\\\file.js"', () => {
+    const source = `import x from "C:\\\\Users\\\\x\\\\file.js";`;
+    expect(scanPurityViolations(source).length).toBeGreaterThan(0);
+  });
+
+  it('flags a Windows drive-letter specifier with a forward slash: "C:/Users/x/file.js"', () => {
+    expect(
+      scanPurityViolations(`import x from "C:/Users/x/file.js";`).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it('flags a UNC specifier: "\\\\\\\\server\\\\share\\\\file.js"', () => {
+    const source = `import x from "\\\\\\\\server\\\\share\\\\file.js";`;
+    expect(scanPurityViolations(source).length).toBeGreaterThan(0);
+  });
+
+  it('flags a file: URL specifier: "file:///abs/src/ingest/x.js"', () => {
+    expect(
+      scanPurityViolations(`import x from "file:///abs/src/ingest/x.js";`).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("never treats an absolute specifier as resolving inside src/model, even at the model root", () => {
+    // A relative-looking resolution would otherwise land back inside
+    // src/model; the leading "/" must still make it a violation.
+    const violations = scanPurityViolations(`import x from "/contact.js";`, {
+      modelRelativePath: "contact.ts",
+    });
+    expect(violations.length).toBeGreaterThan(0);
+  });
+});
+
+describe("purity scanner: shorthand property references (criterion 26, review round 2 finding 2)", () => {
+  it.each(["fetch", "Date", "crypto"])(
+    "flags the shorthand property `{ %s }` as a reference",
+    (identifierName) => {
+      const violations = scanPurityViolations(`const obj = { ${identifierName} };`);
+      expect(violations.length).toBeGreaterThan(0);
+    },
+  );
+
+  it("does not flag a property name in `obj.fetch`", () => {
+    const source = `const obj = { fetch: 1 }; const x = obj.fetch;`;
+    expect(scanPurityViolations(source)).toEqual([]);
+  });
+
+  it("does not flag a property key `{ fetch: 1 }` in an object literal", () => {
+    expect(scanPurityViolations(`const obj = { fetch: 1 };`)).toEqual([]);
+  });
+
+  it("does not flag a method named fetch", () => {
+    expect(scanPurityViolations(`const obj = { fetch() { return 1; } };`)).toEqual([]);
+  });
+
+  it("does not flag a declared function named fetch (shadowing)", () => {
+    expect(scanPurityViolations(`function fetch() { return 1; }`)).toEqual([]);
+  });
+
+  it("does not flag a declared local variable named fetch (shadowing)", () => {
+    expect(scanPurityViolations(`const fetch = 1;`)).toEqual([]);
+  });
+});
+
+describe("purity scanner: Math.random in every shape (criterion 27, review round 2 finding 3)", () => {
+  it("flags an uncalled reference to Math.random", () => {
+    expect(scanPurityViolations(`const r = Math.random;`).length).toBeGreaterThan(0);
+  });
+
+  it("flags a call to Math.random()", () => {
+    expect(scanPurityViolations(`const r = Math.random();`).length).toBeGreaterThan(0);
+  });
+
+  it('flags element access Math["random"]', () => {
+    expect(scanPurityViolations(`const r = Math["random"];`).length).toBeGreaterThan(0);
+  });
+
+  it("flags destructuring random from Math: const { random } = Math", () => {
+    expect(scanPurityViolations(`const { random } = Math;`).length).toBeGreaterThan(0);
+  });
+
+  it("does not flag Math.max", () => {
+    expect(scanPurityViolations(`const m = Math.max(1, 2);`)).toEqual([]);
+  });
+
+  it("does not flag Math.floor", () => {
+    expect(scanPurityViolations(`const m = Math.floor(1.5);`)).toEqual([]);
+  });
+});
+
+describe("purity scanner: extended identifier/meta/method bans (criterion 28, review round 2 finding 4)", () => {
+  it("flags a reference to Intl", () => {
+    expect(scanPurityViolations(`const nf = Intl.NumberFormat;`).length).toBeGreaterThan(0);
+  });
+
+  it("flags a reference to console", () => {
+    expect(scanPurityViolations(`console.log("x");`).length).toBeGreaterThan(0);
+  });
+
+  it.each(["setTimeout", "setInterval", "setImmediate", "queueMicrotask"])(
+    "flags a call to %s",
+    (name) => {
+      expect(scanPurityViolations(`${name}(() => {}, 0);`).length).toBeGreaterThan(0);
+    },
+  );
+
+  it("flags `new WeakRef(...)`", () => {
+    expect(scanPurityViolations(`const w = new WeakRef({});`).length).toBeGreaterThan(0);
+  });
+
+  it("flags `new FinalizationRegistry(...)`", () => {
+    expect(
+      scanPurityViolations(`const r = new FinalizationRegistry(() => {});`).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("flags the import.meta meta-property", () => {
+    expect(scanPurityViolations(`const u = import.meta.url;`).length).toBeGreaterThan(0);
+  });
+
+  it.each(["toLocaleString", "toLocaleDateString", "toLocaleTimeString", "localeCompare"])(
+    "flags the method call x.%s(...)",
+    (methodName) => {
+      const args = methodName === "localeCompare" ? '"y"' : "";
+      expect(
+        scanPurityViolations(`const s = x.${methodName}(${args});`).length,
+      ).toBeGreaterThan(0);
+    },
+  );
+
+  it('flags element access to a banned method name: x["toLocaleString"]()', () => {
+    expect(scanPurityViolations(`const s = x["toLocaleString"]();`).length).toBeGreaterThan(0);
+  });
+
+  it("does not flag an ordinary method call like x.toString()", () => {
+    expect(scanPurityViolations(`const s = x.toString();`)).toEqual([]);
+  });
+});
+
+describe("purity scanner: node:crypto allowlist, exact clause only (criterion 29, review round 2 finding 5)", () => {
+  it("flags an aliased import: import { createHash as h } from \"node:crypto\"", () => {
+    expect(
+      scanPurityViolations(`import { createHash as h } from "node:crypto";`).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it('flags an extra binding: import { createHash, randomBytes } from "node:crypto"', () => {
+    expect(
+      scanPurityViolations(`import { createHash, randomBytes } from "node:crypto";`).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it('flags a default import alongside the named one: import crypto, { createHash } from "node:crypto"', () => {
+    expect(
+      scanPurityViolations(`import crypto, { createHash } from "node:crypto";`).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it('flags an `import type` of createHash: import type { createHash } from "node:crypto"', () => {
+    expect(
+      scanPurityViolations(`import type { createHash } from "node:crypto";`).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it('flags a type-only named binding: import { type createHash } from "node:crypto"', () => {
+    expect(
+      scanPurityViolations(`import { type createHash } from "node:crypto";`).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it('flags export-from of createHash: export { createHash } from "node:crypto"', () => {
+    expect(
+      scanPurityViolations(`export { createHash } from "node:crypto";`).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("resolves a relative import against the file's own subdirectory: rules/m1/rule.ts -> ../../contact.js is inside", () => {
+    const violations = scanPurityViolations(`import { Contact } from "../../contact.js";`, {
+      modelRelativePath: "rules/m1/rule.ts",
+    });
+    expect(violations).toEqual([]);
+  });
+
+  it("resolves a relative import against the file's own subdirectory: rules/m1/rule.ts -> ../../../ingest/x.js is outside", () => {
+    const violations = scanPurityViolations(`import { X } from "../../../ingest/x.js";`, {
+      modelRelativePath: "rules/m1/rule.ts",
+    });
+    expect(violations.length).toBeGreaterThan(0);
+  });
+});
+
+describe("purity scanner: Date is not flagged in type-only positions (criterion 31, review round 2 finding 8)", () => {
+  it("does not flag `let d: Date;`", () => {
+    expect(scanPurityViolations(`let d: Date;`)).toEqual([]);
+  });
+
+  it("does not flag a function-type parameter annotation: `let f: (x: Date) => void;`", () => {
+    expect(scanPurityViolations(`let f: (x: Date) => void;`)).toEqual([]);
+  });
+
+  it("does not flag `type T = Date;`", () => {
+    expect(scanPurityViolations(`type T = Date;`)).toEqual([]);
+  });
+
+  it("still flags Date used in expression position alongside a type-only use", () => {
+    const violations = scanPurityViolations(`let d: Date; const now = Date.now();`);
+    expect(violations.length).toBeGreaterThan(0);
+  });
+});
+
 describe("purity scanner: allowed samples (must not be flagged)", () => {
   it('does not flag `import type { X } from "./x.js"`', () => {
     expect(scanPurityViolations(`import type { X } from "./x.js";`)).toEqual([]);
