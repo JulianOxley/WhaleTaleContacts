@@ -65,6 +65,27 @@ function deepFreeze<T>(value: T): T {
 }
 
 /**
+ * Copies one raw value. An array is copied element-by-element so the
+ * record's own array is never the caller's. A value that is neither a
+ * string nor a string array (off-type input, reachable only by bypassing
+ * the type through `unknown`) is copied one level shallow instead of kept by
+ * reference: `createSourceRecord` deep-freezes everything reachable from
+ * `raw`, and without this copy that freeze would reach back into an object
+ * the caller still holds and freeze it too. A string passes through
+ * unchanged; primitives cannot be frozen in a way that is observable on the
+ * caller's own value, so no copy is needed for them.
+ */
+function cloneRawValue(value: string | readonly string[]): string | readonly string[] {
+  if (Array.isArray(value)) {
+    return [...value];
+  }
+  if (typeof value === "object" && value !== null) {
+    return { ...(value as object) } as unknown as string | readonly string[];
+  }
+  return value;
+}
+
+/**
  * Copies `raw` one entry at a time via `Object.fromEntries`, which defines
  * each property directly rather than assigning through `[]`. That matters
  * for a header literally named `__proto__`: a plain `copy[key] = value`
@@ -75,7 +96,7 @@ function deepFreeze<T>(value: T): T {
  */
 function cloneRaw(raw: RawFields): RawFields {
   return Object.fromEntries(
-    Object.entries(raw).map(([key, value]) => [key, Array.isArray(value) ? [...value] : value]),
+    Object.entries(raw).map(([key, value]) => [key, cloneRawValue(value)]),
   ) as RawFields;
 }
 
@@ -85,18 +106,40 @@ function cloneRaw(raw: RawFields): RawFields {
  * never reachable from the record and `deepFreeze` never touches it (a
  * plain `{ ...normalised }` spread would have carried an extra property's
  * value across by reference, and then frozen the caller's own object).
+ *
+ * The optional fields are only assigned when present (not `undefined`) on
+ * the input, so an absent optional field stays absent as an own key on the
+ * record's `normalised` (`"company" in record.normalised` is `false`)
+ * rather than becoming an own key holding `undefined`. `emails` and
+ * `phones` are always present, as `NormalisedFields` requires.
  */
 function cloneNormalised(normalised: NormalisedFields): NormalisedFields {
-  return {
-    givenName: normalised.givenName,
-    familyName: normalised.familyName,
-    fullName: normalised.fullName,
+  const result: { -readonly [K in keyof NormalisedFields]?: NormalisedFields[K] } & Pick<
+    NormalisedFields,
+    "emails" | "phones"
+  > = {
     emails: [...normalised.emails],
     phones: [...normalised.phones],
-    company: normalised.company,
-    title: normalised.title,
-    linkedinUrl: normalised.linkedinUrl,
   };
+  if (normalised.givenName !== undefined) {
+    result.givenName = normalised.givenName;
+  }
+  if (normalised.familyName !== undefined) {
+    result.familyName = normalised.familyName;
+  }
+  if (normalised.fullName !== undefined) {
+    result.fullName = normalised.fullName;
+  }
+  if (normalised.company !== undefined) {
+    result.company = normalised.company;
+  }
+  if (normalised.title !== undefined) {
+    result.title = normalised.title;
+  }
+  if (normalised.linkedinUrl !== undefined) {
+    result.linkedinUrl = normalised.linkedinUrl;
+  }
+  return result;
 }
 
 /**

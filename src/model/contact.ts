@@ -68,7 +68,15 @@ function checkField(field: ContactField, entries: SourcedValues<string>): string
 
   if (entries.length > 0) {
     const primaryCount = entries.filter((entry) => entry.primary).length;
-    if (primaryCount === 0) {
+    // Every entry carrying an `inferredBy` (present, whether blank or not) is
+    // the exemption test for the zero-primary case: a field made up entirely
+    // of low-confidence inferred values (CKB-5 step 3) may have no primary,
+    // because marking one primary would export it. Testing "present" rather
+    // than "non-blank" here matters so a blank `inferredBy` is reported once,
+    // by the per-entry check above, and not a second time as a missing
+    // primary. More than one primary is always a problem, regardless.
+    const everyEntryInferred = entries.every((entry) => entry.inferredBy !== undefined);
+    if (primaryCount === 0 && !everyEntryInferred) {
       problems.push(`${field}: no entry is marked primary`);
     } else if (primaryCount > 1) {
       problems.push(`${field}: more than one entry is marked primary`);
@@ -93,12 +101,15 @@ function checkField(field: ContactField, entries: SourcedValues<string>): string
 /**
  * A pure validator for the invariants CKB-1 and CKB-4 place on a `Contact`.
  * For every field in `CONTACT_FIELDS`: every entry has a non-empty
- * `sources`; a non-empty list has exactly one entry marked `primary`; an
- * `inferredBy`, when present, is not blank; and no two entries in the same
- * field carry the exact same `value` (provenance for one value belongs on
- * one entry, not split across duplicates). Returns an array of problem
- * strings, each starting with the field name it concerns, empty when the
- * contact is valid.
+ * `sources`; more than one entry marked `primary` is always a problem;
+ * zero entries marked `primary` in a non-empty field is a problem unless
+ * every entry in that field carries an `inferredBy` (second review round,
+ * 2026-09-26 — a field made up entirely of inferred, low-confidence values
+ * may have no primary); an `inferredBy`, when present, is not blank; and no
+ * two entries in the same field carry the exact same `value` (provenance for
+ * one value belongs on one entry, not split across duplicates). Returns an
+ * array of problem strings, each starting with the field name it concerns,
+ * empty when the contact is valid.
  */
 export function validateContact(contact: Contact): string[] {
   const problems: string[] = [];
