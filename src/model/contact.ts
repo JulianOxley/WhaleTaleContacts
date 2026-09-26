@@ -22,11 +22,13 @@ export type ContactField = (typeof CONTACT_FIELDS)[number];
 
 /**
  * The merged "golden" record. Every field holds every conflicting value the
- * merge has seen for it, each with its own provenance; when a field's list
- * is non-empty exactly one entry is `primary` (the value chosen by source
- * precedence, or the primary email/phone). An empty list means the contact
- * has no value for that field. Contact identity (an id) is deferred to
- * WTC-16.
+ * merge has seen for it, each with its own provenance. More than one entry
+ * marked `primary` (the value chosen by source precedence, or the primary
+ * email/phone) is always a problem; zero primaries in a non-empty list is
+ * allowed only when every entry carries `inferredBy` (a value inferred at
+ * low confidence, awaiting review), so `primaryOf` can return `undefined`
+ * for a non-empty field. An empty list means the contact has no value for
+ * that field. Contact identity (an id) is deferred to WTC-16.
  */
 export type Contact = {
   readonly [K in ContactField]: SourcedValues<string>;

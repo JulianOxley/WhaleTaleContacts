@@ -26,15 +26,18 @@ export interface PrimarySourced<T> extends Sourced<T> {
 
 /**
  * All values a contact holds for one field, each with its own provenance.
- * Exactly one entry is `primary` when the list is non-empty; that invariant
- * is enforced by `validateContact`, not by the type.
+ * More than one entry marked `primary` is always a problem; zero primaries
+ * in a non-empty list is allowed only when every entry carries `inferredBy`
+ * (a value inferred at low confidence, awaiting review). Both invariants are
+ * enforced by `validateContact`, not by the type.
  */
 export type SourcedValues<T> = readonly PrimarySourced<T>[];
 
 /**
- * The primary entry of a field, or `undefined` when the field is empty (or
- * holds no primary, which `validateContact` would flag as a problem). Pure:
- * returns the first entry marked primary, and does not validate.
+ * The primary entry of a field, or `undefined` when the field is empty, or
+ * when a non-empty field legitimately has no primary because every entry
+ * carries `inferredBy` (see `SourcedValues`). Pure: returns the first entry
+ * marked primary, and does not validate.
  */
 export function primaryOf<T>(values: SourcedValues<T>): PrimarySourced<T> | undefined {
   return values.find((entry) => entry.primary);
