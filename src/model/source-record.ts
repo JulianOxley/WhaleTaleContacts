@@ -64,28 +64,66 @@ function deepFreeze<T>(value: T): T {
   return value;
 }
 
-function cloneRaw(raw: RawFields): Record<string, string | readonly string[]> {
-  const copy: Record<string, string | readonly string[]> = {};
-  for (const [key, value] of Object.entries(raw)) {
-    copy[key] = Array.isArray(value) ? [...value] : value;
-  }
-  return copy;
+/**
+ * Copies `raw` one entry at a time via `Object.fromEntries`, which defines
+ * each property directly rather than assigning through `[]`. That matters
+ * for a header literally named `__proto__`: a plain `copy[key] = value`
+ * assignment would run the inherited `__proto__` setter instead of creating
+ * an own property, silently dropping the header. `Object.fromEntries`
+ * defines it as an ordinary own property instead, and leaves the returned
+ * object's prototype as the ordinary `Object.prototype`.
+ */
+function cloneRaw(raw: RawFields): RawFields {
+  return Object.fromEntries(
+    Object.entries(raw).map(([key, value]) => [key, Array.isArray(value) ? [...value] : value]),
+  ) as RawFields;
 }
 
+/**
+ * Copies only the known `NormalisedFields` keys. Any extra, off-type
+ * property the caller's object happens to carry is not copied, so it is
+ * never reachable from the record and `deepFreeze` never touches it (a
+ * plain `{ ...normalised }` spread would have carried an extra property's
+ * value across by reference, and then frozen the caller's own object).
+ */
 function cloneNormalised(normalised: NormalisedFields): NormalisedFields {
   return {
-    ...normalised,
+    givenName: normalised.givenName,
+    familyName: normalised.familyName,
+    fullName: normalised.fullName,
     emails: [...normalised.emails],
     phones: [...normalised.phones],
+    company: normalised.company,
+    title: normalised.title,
+    linkedinUrl: normalised.linkedinUrl,
   };
 }
 
 /**
- * Builds a `SourceRecord`. Takes its own copy of `raw` and `normalised`, so a
- * later change to the caller's input objects never reaches the record, then
- * deeply freezes the result so it cannot be modified after creation.
+ * Throws unless `id` starts with `${source}:` and the key after that prefix
+ * is non-blank, so a record's id always agrees with its declared source
+ * kind (for example a `google` record cannot carry a `linkedin:` id).
+ */
+function assertIdMatchesSource(source: SourceKind, id: SourceRecordId): void {
+  const prefix = `${source}:`;
+  if (!id.startsWith(prefix)) {
+    throw new Error(`createSourceRecord: id "${id}" must start with "${prefix}"`);
+  }
+  const key = id.slice(prefix.length);
+  if (key.trim().length === 0) {
+    throw new Error(`createSourceRecord: id "${id}" must have a non-blank key after "${prefix}"`);
+  }
+}
+
+/**
+ * Builds a `SourceRecord`. Validates that `id` agrees with `source`, takes
+ * its own copy of `raw` and `normalised` (only the known keys, for
+ * `normalised`), so a later change to the caller's input objects never
+ * reaches the record and the caller's objects are never frozen, then deeply
+ * freezes the result so it cannot be modified after creation.
  */
 export function createSourceRecord(input: CreateSourceRecordInput): SourceRecord {
+  assertIdMatchesSource(input.source, input.id);
   const record: SourceRecord = {
     source: input.source,
     id: input.id,

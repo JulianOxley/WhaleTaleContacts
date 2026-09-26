@@ -1,36 +1,26 @@
+import { CONTACT_FIELDS } from "./contact.js";
 import type { Contact } from "./contact.js";
 import type { Decision } from "./decision.js";
 import type { SourceRecordId } from "./source-record.js";
 
 function sourceIdsOf(contact: Contact): ReadonlySet<SourceRecordId> {
   const ids = new Set<SourceRecordId>();
-
-  const singleValueFields = [
-    contact.givenName,
-    contact.familyName,
-    contact.fullName,
-    contact.company,
-    contact.title,
-    contact.linkedinUrl,
-  ];
-  for (const field of singleValueFields) {
-    field?.sources.forEach((id) => ids.add(id));
+  for (const field of CONTACT_FIELDS) {
+    for (const entry of contact[field]) {
+      entry.sources.forEach((id) => ids.add(id));
+    }
   }
-
-  for (const email of contact.emails) {
-    email.sources.forEach((id) => ids.add(id));
-  }
-  for (const phone of contact.phones) {
-    phone.sources.forEach((id) => ids.add(id));
-  }
-
   return ids;
 }
 
 /**
  * Traces a contact back to the decisions that produced it: the decisions
- * whose `sourceRecordIds` overlap any source record id cited on the contact.
- * This is how any output row is explained back to its inputs (CKB-1).
+ * whose `sourceRecordIds` overlap any source record id cited on the
+ * contact, gathered from every entry of every field in `CONTACT_FIELDS`.
+ * Matching decisions are returned in their input order, each exactly once,
+ * so re-running with the same inputs gives identical output. This stays
+ * contact-scoped and does not explain exclusions: an excluded record never
+ * reaches a contact, and that is WTC-15's exclusion report to build.
  */
 export function explain(contact: Contact, decisions: readonly Decision[]): Decision[] {
   const contactSourceIds = sourceIdsOf(contact);

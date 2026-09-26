@@ -32,6 +32,9 @@ export interface CreateDecisionInput {
  * useful as a log entry.
  */
 export function createDecision(input: CreateDecisionInput): Decision {
+  if (input.ruleId.trim().length === 0) {
+    throw new Error("createDecision: ruleId must not be empty");
+  }
   if (input.sourceRecordIds.length === 0) {
     throw new Error("createDecision: sourceRecordIds must not be empty");
   }
