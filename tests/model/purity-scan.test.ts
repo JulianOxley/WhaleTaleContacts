@@ -305,15 +305,19 @@ describe("purity scanner: extended identifier/meta/method bans (criterion 28, re
     expect(scanPurityViolations(`const u = import.meta.url;`).length).toBeGreaterThan(0);
   });
 
-  it.each(["toLocaleString", "toLocaleDateString", "toLocaleTimeString", "localeCompare"])(
-    "flags the method call x.%s(...)",
-    (methodName) => {
-      const args = methodName === "localeCompare" ? '"y"' : "";
-      expect(
-        scanPurityViolations(`const s = x.${methodName}(${args});`).length,
-      ).toBeGreaterThan(0);
-    },
-  );
+  it.each([
+    "toLocaleString",
+    "toLocaleDateString",
+    "toLocaleTimeString",
+    "localeCompare",
+    "toLocaleLowerCase",
+    "toLocaleUpperCase",
+  ])("flags the method call x.%s(...)", (methodName) => {
+    const args = methodName === "localeCompare" ? '"y"' : "";
+    expect(
+      scanPurityViolations(`const s = x.${methodName}(${args});`).length,
+    ).toBeGreaterThan(0);
+  });
 
   it('flags element access to a banned method name: x["toLocaleString"]()', () => {
     expect(scanPurityViolations(`const s = x["toLocaleString"]();`).length).toBeGreaterThan(0);
@@ -321,6 +325,32 @@ describe("purity scanner: extended identifier/meta/method bans (criterion 28, re
 
   it("does not flag an ordinary method call like x.toString()", () => {
     expect(scanPurityViolations(`const s = x.toString();`)).toEqual([]);
+  });
+
+  it("flags email.toLocaleLowerCase() (final review pass extension of criterion 28)", () => {
+    expect(
+      scanPurityViolations(`const e = email.toLocaleLowerCase();`).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("flags name.toLocaleUpperCase() (final review pass extension of criterion 28)", () => {
+    expect(
+      scanPurityViolations(`const n = name.toLocaleUpperCase();`).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it('flags element access to a banned method name: s["toLocaleLowerCase"]()', () => {
+    expect(scanPurityViolations(`const l = s["toLocaleLowerCase"]();`).length).toBeGreaterThan(
+      0,
+    );
+  });
+
+  it("does not flag plain toLowerCase()", () => {
+    expect(scanPurityViolations(`const l = email.toLowerCase();`)).toEqual([]);
+  });
+
+  it("does not flag plain toUpperCase()", () => {
+    expect(scanPurityViolations(`const u = name.toUpperCase();`)).toEqual([]);
   });
 });
 
@@ -330,6 +360,18 @@ describe("purity scanner: node:crypto allowlist, exact clause only (criterion 29
       scanPurityViolations(`import { createHash as h } from "node:crypto";`).length,
     ).toBeGreaterThan(0);
   });
+
+  it(
+    "flags the guard-testing alias case: import { randomBytes as createHash } from " +
+      '"node:crypto" (local name matches, imported name does not)',
+    () => {
+      expect(
+        scanPurityViolations(
+          `import { randomBytes as createHash } from "node:crypto";`,
+        ).length,
+      ).toBeGreaterThan(0);
+    },
+  );
 
   it('flags an extra binding: import { createHash, randomBytes } from "node:crypto"', () => {
     expect(

@@ -55,12 +55,18 @@ const FORBIDDEN_IDENTIFIERS = new Set([
 ]);
 
 // Property/element-access names that are banned regardless of the object
-// they are accessed on (criterion 28's method list).
+// they are accessed on (criterion 28's method list, extended by the final
+// review pass to include toLocaleLowerCase and toLocaleUpperCase, which are
+// locale-dependent in the same way as the others -- for example Turkish
+// lowercases "I" to "ı" -- and are exactly what a normalisation rule author
+// would reach for).
 const BANNED_MEMBER_NAMES = new Set([
   "toLocaleString",
   "toLocaleDateString",
   "toLocaleTimeString",
   "localeCompare",
+  "toLocaleLowerCase",
+  "toLocaleUpperCase",
 ]);
 
 const ALLOWED_EXTERNAL_SPECIFIER = "node:crypto";
