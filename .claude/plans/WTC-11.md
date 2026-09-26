@@ -404,7 +404,7 @@ A second cold review found the model code correct and every first-review fix clo
 
 ### Criteria added or changed
 
-16 (changed). For every field in `CONTACT_FIELDS`: more than one primary is always reported; zero primaries in a non-empty field is reported unless every entry in that field has a non-blank `inferredBy`.
+16 (changed). For every field in `CONTACT_FIELDS`: more than one primary is always reported; zero primaries in a non-empty field is reported unless every entry in that field has `inferredBy` present (blank or not). A blank `inferredBy` is reported once, as `inferredBy is blank`, so a single defect still yields exactly one problem.
 
 25. [review 2, finding 1] The purity scan reports any absolute module specifier (starting with `/`, or a Windows drive or UNC path, or a `file:` URL) as a violation, never as inside src/model.
 26. [review 2, finding 2] A shorthand property assignment (`{ fetch }`, `{ Date }`, `{ crypto }`) counts as a reference to that identifier and is flagged. Property *names* in `obj.fetch`, `{ fetch: 1 }`, method names and declared names are still not flagged.
