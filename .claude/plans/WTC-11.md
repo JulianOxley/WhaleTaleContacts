@@ -391,3 +391,30 @@ F. **Review decisions (WTC-18).** CKB-8's human choices (merge, keep separate, e
 G. **Typecheck over tests.** Resolved: `tsconfig.json` includes `tests`.
 
 H. **Order of values within a field.** Belongs to WTC-16. The model does not enforce an order.
+
+## Second review round (2026-09-26)
+
+A second cold review found the model code correct and every first-review fix closed, except that the new purity scanner can still be bypassed. The user asked the session to proceed as it saw fit. Decisions and criteria below override earlier text where they conflict.
+
+### Decisions (session, on the user's delegation)
+
+- **Finding 6 (low-confidence inferred value awaiting review).** CKB-5 step 3 derives a company "at low confidence, shown for review", and CKB-1 says low means record, do not act. Making such a value `primary` would export it. So criterion 16 is relaxed, with no type change: a non-empty field needs exactly one primary **unless every entry in it has `inferredBy`**, in which case zero primaries is also valid. More than one primary is always a problem. A field with at least one non-inferred entry still needs exactly one primary.
+- **Finding 4 (scanner scope).** Ban by identifier reference: `Intl`, `console`, `setTimeout`, `setInterval`, `setImmediate`, `queueMicrotask`, `WeakRef`, `FinalizationRegistry`, and the `import.meta` meta-property; and the method calls `toLocaleString`, `toLocaleDateString`, `toLocaleTimeString`, `localeCompare` (property access or element access with that string name). The `.constructor("…")` route to the Function constructor is **not** chased; after this round, obscure bypasses are left to code review rather than further scanner hardening.
+- **Findings 1 to 3, 5, 7 and 8** are fixed as listed below.
+
+### Criteria added or changed
+
+16 (changed). For every field in `CONTACT_FIELDS`: more than one primary is always reported; zero primaries in a non-empty field is reported unless every entry in that field has a non-blank `inferredBy`.
+
+25. [review 2, finding 1] The purity scan reports any absolute module specifier (starting with `/`, or a Windows drive or UNC path, or a `file:` URL) as a violation, never as inside src/model.
+26. [review 2, finding 2] A shorthand property assignment (`{ fetch }`, `{ Date }`, `{ crypto }`) counts as a reference to that identifier and is flagged. Property *names* in `obj.fetch`, `{ fetch: 1 }`, method names and declared names are still not flagged.
+27. [review 2, finding 3] Any use of `Math.random` is flagged: property access `Math.random` in any position (call or not), element access `Math["random"]`, and destructuring `random` from `Math` (`const { random } = Math`). Other `Math` members (`Math.max`, `Math.floor`) are allowed.
+28. [review 2, finding 4] The identifiers, meta-property and method names in the finding-4 decision above are flagged.
+29. [review 2, finding 5] The `node:crypto` allowlist accepts only the exact clause `import { createHash } from "node:crypto"`. It rejects an alias (`{ createHash as h }`), extra bindings (`{ createHash, randomBytes }`), a default or namespace import alongside it, and `import type`/`export … from` forms of anything else from `node:crypto`. Relative paths resolve against the file's own directory, including subdirectories such as `src/model/rules/m1/rule.ts`.
+30. [review 2, finding 7] `createSourceRecord` does not create own keys for optional normalised fields that were absent in the input: `"company" in record.normalised` is `false` when no company was given, and `Object.keys(record.normalised)` lists only the keys present (always including `emails` and `phones`). `raw` values that are not strings or string arrays (off-type input) are not frozen in the caller's object.
+31. [review 2, finding 8] The purity test scans every `*.ts`, `*.mts`, `*.cts`, `*.js`, `*.mjs` and `*.cjs` file under src/model. The scanner does not flag `Date` in type-only positions (for example `let d: Date`). The self-built "Contact keys" runtime test is removed (the guarantee is the mapped type at typecheck).
+
+### File plan
+
+- **model-developer**: `src/model/contact.ts` (16 as changed), `src/model/source-record.ts` (30).
+- **tester**: `tests/model/purity-scan.ts`, `tests/model/purity-scan.test.ts`, `tests/model/purity.test.ts` (25 to 29, 31), `tests/model/contact.test.ts` (16 as changed, 31), `tests/model/source-record.test.ts` (30).
