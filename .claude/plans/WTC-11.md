@@ -1,7 +1,7 @@
 ---
 ticket: WTC-11
 epic: WTC-10
-pages: [CKB-1, CKB-9, CKB-2, CKB-4]
+pages: [CKB-1, CKB-9, CKB-2, CKB-4, CKB-3, CKB-5, CKB-7, CKB-8]
 ---
 
 # WTC-11: Canonical contact model and provenance
@@ -150,3 +150,244 @@ All resolved or deferred by the user on 2026-09-25 (see Decisions).
 8. **[Deferred: WTC-16]** **Confidence/outcome consistency.** CKB-1 implies that `medium` goes to the review queue, but it does not say that a medium decision *must* have outcome `flagged-for-review`, or that `low` cannot be `merged`. No validator is added for this. Decide in WTC-16 or WTC-18, or add it here if the user wants it.
 9. **[Kept, as context only]** **CKB-2 citation.** Listed in `pages` because it was fetched, but it is not linked from WTC-11 or its one-hop pages. It was used only to understand the source kinds.
 10. **[Resolved: ESLint, in WTC-3]** **Lint.** CKB-9 names no linter. The `lint` script stays a stub unless the user picks one.
+
+## Addendum (after review, 2026-09-26)
+
+This addendum overrides the earlier sections of this plan wherever they conflict. The earlier Decisions section still applies except where this addendum changes it. On 2026-09-26 the user decided two things: fix the review findings inside WTC-11, and widen the contact types now instead of leaving that to WTC-16 and WTC-17.
+
+Numbering note: the new criteria start at 15. There is no criterion 14.
+
+### Decisions on the addendum (user, 2026-09-26)
+
+- **A. Accepted.** Criterion 20 stands: `validateContact` reports two entries in one field with the same exact `value`.
+- **B. Allow `createHash` only.** The purity allowlist is exactly `import { createHash } from "node:crypto"`: the named import `createHash`, and nothing else from that module. Every other external specifier is a violation, and so is any other import from `node:crypto` (namespace, default, `randomUUID`, `randomBytes`, `randomInt`, `webcrypto`, `getRandomValues`).
+- **C. Deferred to WTC-16.** `Contact` gets no id in WTC-11. WTC-16 edits contact.ts once to add identity.
+- **F. Add `kept-separate` now.** `OUTCOMES` becomes `["merged","excluded","flagged-for-review","inferred","kept-separate"]`, for CKB-8's "keep separate" review choice. This **replaces criterion 8** (four outcomes) with criterion 24 below. The ticket listed four outcomes; the fifth is the user's decision, sourced from CKB-8.
+
+24. [CKB-8, user decision F] The `Outcome` type accepts exactly `merged`, `excluded`, `flagged-for-review`, `inferred` and `kept-separate`, and `OUTCOMES` exposes exactly these five, in that order.
+
+File plan additions: model-developer changes `src/model/outcome.ts` (24); tester updates the `OUTCOMES` tests in `tests/model/decision.test.ts` (24).
+
+### Sources fetched for this addendum
+
+| Source | How reached | Notes |
+| --- | --- | --- |
+| WTC-16 "Identity matching and merge" | getIssue | Parent WTC-10. remoteLinks: CKB-4. No comments. The key line: "Conflicting field values are resolved by the source precedence on CKB-4, and all values are kept with their provenance." |
+| WTC-17 "Company inference" | getIssue | Parent WTC-10. remoteLinks: CKB-5. No comments. The key line: "Inferred values are marked as inferred, with the rule id." |
+| WTC-15 "Noise filter rules" | getIssue | Parent WTC-10. remoteLinks: CKB-3. No comments. "Excluded records appear in an exclusion report with the rule id." |
+| WTC-18 "Review queue UI" | getIssue | Parent WTC-10. remoteLinks: CKB-8. No comments |
+| WTC-10 (epic) | getIssue, fetched again | Definition of done unchanged |
+| CKB-4 "Matching rules" | remoteLinks of WTC-16 | Precedence: name, company and title go LinkedIn, then phone, then Google. Email and phone: "keep all values; the primary comes from Google, then phone, then LinkedIn" |
+| CKB-5 "Company inference" | remoteLinks of WTC-17 | Three steps: LinkedIn company, then the company of another contact on the same domain (high), then a name derived from the domain (low, "shown for review"). relatedPages: CKB-7 |
+| CKB-7 "Free-mail domains" | relatedPages of CKB-5 | A data list, context only |
+| CKB-3 "Noise rules" | remoteLinks of WTC-15 | N1 to N6, each with an exclude or flag outcome and a confidence |
+| CKB-8 "Review workflow" | remoteLinks of WTC-18 | Medium decisions are queued. Records are shown side by side with the reason. The user chooses merge, keep separate or exclude. Decisions are reapplied on re-run |
+| CKB-1, CKB-9 | read again | Unchanged |
+
+None of these tickets has comments. No fetch failed.
+
+### What 16 and 17 need from the model, and nothing more
+
+- **WTC-16 and CKB-4**: every field can hold several conflicting values, each with its own provenance. One of them is the winner by precedence. For emails and phones the winner is the "primary", with its own precedence, and every value is still kept and exported. The two needs are the same: a list of sourced values with exactly one marked as chosen. The difference between single-value and multi-value fields only shows up in the *export*, where a single-value field outputs only its primary. That is WTC-19 or ingest's concern, not the model's.
+- **WTC-17 and CKB-5**: a value must be able to say "I was inferred, by rule X". The inferred value still cites source records, meaning the records whose data the inference was drawn from. The confidence and reason belong in the `Decision` the rule emits, not on the value.
+- **Contract gap only**: the rules themselves, the precedence tables and the ordering of values are not designed here.
+
+### Widened type design (public contract for the tester)
+
+**`src/model/provenance.ts`**
+
+```ts
+export interface Sourced<T> {
+  readonly value: T;
+  readonly sources: readonly SourceRecordId[];   // non-empty on a Contact (validator)
+  readonly inferredBy?: string;                  // present iff the value was inferred; the rule id
+}
+
+export interface PrimarySourced<T> extends Sourced<T> {
+  readonly primary: boolean;                     // the chosen/winning value of its field
+}
+
+/** All values a contact holds for one field, each with provenance; exactly one primary when non-empty. */
+export type SourcedValues<T> = readonly PrimarySourced<T>[];
+
+/** The primary entry of a field, or undefined when the field is empty. Pure. */
+export function primaryOf<T>(values: SourcedValues<T>): PrimarySourced<T> | undefined;
+```
+
+- `inferredBy?: string`, rather than `inferred: boolean` plus `ruleId`, means an "inferred with no rule id" state cannot be written. Absent means the value was read from a source. Present and non-blank means it was inferred by that rule.
+- `primaryOf` is **[proposed]**. Without it, the export (WTC-19), review (WTC-18) and later rules would each re-implement "find the chosen value". It returns the first entry with `primary: true`, or `undefined`. It does not validate.
+
+**`src/model/contact.ts`**
+
+```ts
+export const CONTACT_FIELDS = [
+  "givenName", "familyName", "fullName", "emails", "phones", "company", "title", "linkedinUrl",
+] as const;
+export type ContactField = (typeof CONTACT_FIELDS)[number];
+
+export type Contact = { readonly [K in ContactField]: SourcedValues<string> };
+
+export function validateContact(contact: Contact): string[];
+```
+
+- Every field is required and is a list. An empty list means the contact has no value for that field. The optional single `Sourced<string>` fields are removed.
+- `CONTACT_FIELDS` is the **only** field list. `Contact` is a mapped type over it, and `validateContact` and `explain` iterate it. The private `singleValueFieldsOf` in contact.ts and the inline list in explain.ts are deleted.
+- There is also a compile-time check that `keyof NormalisedFields` (source-record.ts) equals `ContactField`, so the normalised shape and the contact shape cannot drift apart. The developer chooses how, for example a type-level equality assertion inside contact.ts. `tsconfig.json` includes both `src` and `tests`, so either location is typechecked.
+- `explain.ts` imports `CONTACT_FIELDS` from contact.ts. That import is one-way, and contact.ts does not import explain.ts.
+
+**No changes** to `Decision`, `Outcome`, `Confidence` or `SourceRecord` shapes. The only changes are the factory validations below.
+
+**Why this avoids later edits.** WTC-16 fills lists and sets `primary`. WTC-17 appends or sets a company entry with `inferredBy`. Neither needs a new field or type in contact.ts or provenance.ts. A rule id is a plain string, so nothing enumerates rules.
+
+### New acceptance criteria
+
+15. [ticket WTC-16, CKB-4] Each field listed in `CONTACT_FIELDS` is a `SourcedValues<string>` on `Contact`: a list of `{ value, sources, primary, inferredBy? }`. A contact can therefore hold several conflicting values for givenName, familyName, fullName, company, title and linkedinUrl, each with its own provenance, as well as for emails and phones.
+16. [CKB-4, CKB-1] For every field, when the list is non-empty, exactly one entry is `primary`. For single-value fields "primary" means the value chosen by source precedence. For emails and phones it means the primary address or number. `validateContact` reports zero primaries or more than one, for **every** field in `CONTACT_FIELDS`.
+17. [ticket WTC-17] A value that was inferred carries `inferredBy: <rule id>`. A value read from a source has no `inferredBy`. `validateContact` reports an `inferredBy` that is present but empty or whitespace-only.
+18. [review, finding 2] `CONTACT_FIELDS` is exported and equals exactly `["givenName","familyName","fullName","emails","phones","company","title","linkedinUrl"]`. The keys of a `Contact` are exactly these, and `keyof NormalisedFields` equals `ContactField`. The second part is checked at typecheck.
+19. [review, finding 3] **[proposed]** Each problem string returned by `validateContact` starts with the name of the field it concerns, for example `"company"` or `"phones[1]"`. A contact with exactly one defect yields exactly one problem.
+20. [WTC-16 "all values are kept", **proposed**, pending Open question A] `validateContact` reports two entries in the same field with the same `value`. Provenance for one value is accumulated on one entry, not split across duplicates.
+21. [review, finding 4] `createSourceRecord` throws when `id` does not start with `` `${source}:` ``. For example, source `google` with id `linkedin:x` throws, source `google` with id `google-other:x` throws, and source `google-other` with id `google:x` throws. It also throws when the key after the prefix is empty or whitespace-only, as in `phone:` or `phone:  `.
+22. [review, finding 6] `createDecision` throws on an empty or whitespace-only `ruleId`.
+23. [**proposed**] `primaryOf(values)` returns the entry marked primary, or `undefined` for an empty list.
+
+### Changes to existing criteria
+
+- **Criterion 5** is replaced by 15. It becomes: "every field value on a contact is a `PrimarySourced` entry whose `sources` is non-empty." That now covers **every** field.
+- **Criterion 6** is widened by 16. The "exactly one primary" rule applies to every field, and the empty-`sources` check applies to every entry of every field.
+- **Criterion 7** gains a non-empty `ruleId` (22).
+- **Criterion 2** gains the id/source agreement (21).
+- **Criterion 4** gains two requirements.
+  - `createSourceRecord` copies only the known `NormalisedFields` keys. Unknown extra properties on `normalised` (off-type input) are not carried, and the caller's objects are never frozen.
+  - A raw header named `__proto__` or `constructor` is kept as an own property with its value, and the record's `raw` does not get a changed prototype. How this is done is the developer's choice.
+- **Criterion 11 (`explain`)** changes in three ways.
+  - It gathers source ids from every entry of every field in `CONTACT_FIELDS`.
+  - It returns matching decisions **in their input order, each once**. That is needed for identical re-run output.
+  - It stays contact-scoped and does **not** explain exclusions. An excluded record never reaches a contact. The exclusion report is WTC-15's, and the `Decision` shape already carries what it needs. If WTC-15 wants a helper, it adds a new file and does not edit explain.ts.
+- **Criterion 12 (purity)** is rewritten as an **allowlist**. Every module specifier in `src/model/**/*.ts` must be one of two things:
+  - a relative specifier that resolves inside `src/model/`, or
+  - on an explicit allowlist of external specifiers.
+
+  "Every module specifier" covers static imports, `import type`, side-effect `import "x"`, `export … from "x"`, dynamic `import("x")` (awaited or not), `require("x")` and `import x = require("x")`. A dynamic `import()` or `require()` whose argument is not a plain string literal is always a violation. The allowlist's contents depend on Open question B. The tester writes it as a single constant, so the decision is a one-line change. A blanket ban on all `node:` imports is **not** the requirement.
+- **Criterion 13 (determinism and no network)** is also enforced by identifier and call scanning that ignores comments and string literals. See the pattern list below.
+- **Criteria 1 to 3 and 8 to 10**: unchanged.
+
+### Is validateContact changing?
+
+Yes. It iterates `CONTACT_FIELDS` and checks each field for four things:
+- every entry has non-empty `sources`;
+- a non-empty list has exactly one primary;
+- `inferredBy`, if present, is not blank;
+- no duplicate `value` in a field, if the user accepts criterion 20.
+
+The return type stays `string[]`, with the prefix contract from criterion 19.
+
+### File plan
+
+**model-developer (src/model only)**
+
+| File | Change |
+| --- | --- |
+| `src/model/provenance.ts` | Add `inferredBy?` to `Sourced`. Add `SourcedValues<T>` and `primaryOf` (15, 17, 23) |
+| `src/model/contact.ts` | Add `CONTACT_FIELDS` and `ContactField`, make `Contact` a mapped type, and add the NormalisedFields/ContactField type-level equality. Rewrite `validateContact` over `CONTACT_FIELDS` (15 to 20). Remove `singleValueFieldsOf` |
+| `src/model/explain.ts` | Iterate `CONTACT_FIELDS` and remove the local list. Keep input order with no duplicates (criterion 11 as changed) |
+| `src/model/source-record.ts` | Validate id prefix and key (21). Copy known normalised keys only. Keep `__proto__` and `constructor` raw headers as own properties (criterion 4 as changed) |
+| `src/model/decision.ts` | Reject blank `ruleId` (22) |
+
+No new files, no barrel, and nothing outside `src/model/`. After the change, src/model must pass the new purity scan.
+
+**tester (tests/model only)**
+
+| File | Change |
+| --- | --- |
+| `tests/model/purity-scan.ts` | **new**. A scanner helper that takes source text and returns violations. Parse with the TypeScript compiler API (`typescript` is already a devDependency) so comments and string literals are never matched. It lives in tests/ and never in src/model |
+| `tests/model/purity-scan.test.ts` | **new**. Self-tests for the scanner on inline sample strings. Every forbidden sample must be flagged, and every allowed or comment-only sample must not be |
+| `tests/model/purity.test.ts` | Rewrite to run the scanner over `src/model/**/*.ts`. Keep the "found at least one file" guard |
+| `tests/model/contact.test.ts` | Move fixtures to the new shape (every field a list). Cover 15 to 20 and 23 |
+| `tests/model/explain.test.ts` | **new** (moved out of contact.test.ts). Criterion 11 as changed |
+| `tests/model/source-record.test.ts` | 21, and criterion 4 as changed |
+| `tests/model/decision.test.ts` | 22, and the caller-array mutation test |
+
+### Test requirements that close the findings
+
+**Finding 1 (purity).** The scanner must flag every one of these samples:
+
+- Imports:
+  - `import fs from "fs"`, `import "node:fs"` (side effect), `export { x } from "fs"`
+  - `await import("fs")`, `import("node:fs")`, `` import(`fs`) ``, `import(name)`
+  - `require("path")`, `import x = require("http")`
+  - `import os from "os"`, `import { request } from "undici"`
+  - each of `fs/promises`, `node:fs/promises`, `path`, `http`, `https`, `net`, `dgram`, `child_process`, `worker_threads`
+  - `import { randomUUID } from "crypto"`, and `import { randomUUID } from "node:crypto"` even if `node:crypto` is allowlisted
+  - `import * as c from "node:crypto"` (namespace or default import of crypto)
+  - `"../ingest/csv.js"`, `"../review/queue.js"`, `"../../src/ingest/x.js"`, and any relative path that leaves `src/model`
+- Identifiers, in expression position:
+  - `fetch(...)`, `const f = fetch`, `globalThis.fetch`, `globalThis["fetch"]`; any reference to `globalThis`, `window`, `self`, `global`, `process`, `require`, `eval`, `Function`, `XMLHttpRequest`, `WebSocket`
+  - `Date.now()`, `new Date()`, `Date()`; any reference to the `Date` identifier
+  - `performance.now()`; any reference to `performance`
+  - `Math.random()`; any reference to the global `crypto`, so `crypto.randomUUID()` and `crypto.getRandomValues(...)` are both caught
+
+The scanner must **not** flag:
+- any of the above when it appears only in a `//` or `/* */` comment or inside a string literal, for example `reason: "no Date() here"`;
+- `import type { X } from "./x.js"` or `import { Y } from "./sub/y.js"`;
+- property names such as `record.date`, or a key `fetch:` in an object literal;
+- whatever the allowlist permits under Open question B.
+
+**Finding 2 (explain).** Use a fixture in which **each field kind carries a source id that appears nowhere else on the contact**:
+- `linkedin:url-only` only on `linkedinUrl`;
+- `linkedin:company-only` only on `company`;
+- `google:title-only` only on `title`;
+- `phone:phone-only` only on a phone;
+- `google-other:email-only` only on an email;
+- distinct ids on `givenName`, `familyName` and `fullName`;
+- a second, non-primary company entry with its own id.
+
+Then write one test per id: a decision citing only that id is returned. A decision citing only an unrelated id is not returned. Also cover order: given `[d3, d1, d2]`, all matching, the result is `[d3, d1, d2]`. Cover no duplicates: a decision overlapping on several ids appears once. Also check that the fields `explain` scans are exactly `CONTACT_FIELDS`: iterate `CONTACT_FIELDS`, put a unique id on only that field, and assert the result.
+
+**Finding 3 (validateContact).** For **each** field in `CONTACT_FIELDS`, loop over the list and build a valid contact with a single defect in that field. Cover these defects:
+- empty `sources`;
+- no primary, with two or more entries;
+- two primaries;
+- `inferredBy: ""` and `inferredBy: "  "`.
+
+Assert `problems` has length **exactly 1** and `problems[0].startsWith(field)`. Add positive cases:
+- a contact with conflicting company values, one primary and each with distinct sources, is valid;
+- an inferred company `{ value, sources:[id], primary:true, inferredBy:"C2" }` is valid;
+- an all-empty contact is valid.
+
+For duplicate values (criterion 20), do the same exact-one-problem check, if the user accepts it.
+
+**Finding 4 (createSourceRecord).**
+- Throws for:
+  - `{source:"google", id:"linkedin:x"}`
+  - `{source:"google", id:"google-other:x"}`
+  - `{source:"google-other", id:"google:x"}`
+  - `id:"phone:"`
+  - `id:"phone:   "`
+- Accepts a matching id for every `SOURCE_KINDS` entry.
+
+**Finding 6.**
+- **Off-type extra property.** Pass `normalised` with an extra nested object, cast through `unknown`. Afterwards `Object.isFrozen(extra)` is `false`, `Object.isFrozen(callerNormalised)` is `false`, and the record's `normalised` has no own key for the extra property.
+- **`__proto__` header.** Build raw with `JSON.parse('{"__proto__":"x","constructor":"y"}')`. Assert `Object.hasOwn(record.raw, "__proto__")` and that its value is `"x"`, the same for `constructor`, and `Object.getPrototypeOf(record.raw)` is either `Object.prototype` or `null`.
+- **Blank ruleId.** `createDecision` with `ruleId: ""` and `"  "` throws.
+- **Caller-array mutation.** Mutate the caller's `sourceRecordIds` array after `createDecision` (push and assign index 0). The decision's `sourceRecordIds` is unchanged.
+
+All data stays fabricated and inline: example.com/.org/.net, +44 7700 900xxx or 555-01xx, "Ada Example", "Example Widgets Ltd". Mark criteria 19, 20 and 23 as [proposed] in the test output.
+
+### Open questions
+
+A. **Duplicate values in a field (criterion 20).** The planner proposes reporting them, so that "all values kept with provenance" means one entry per distinct value with its sources merged. Alternatives: WTC-16 allows the same value per source as separate entries, or the check compares normalised values rather than exact values. If rejected, drop 20 and its tests.
+
+B. **`node:crypto` in the model.** The planner proposes allowing `import { createHash } from "node:crypto"` and nothing else from it, because a content hash is deterministic and WTC-16 may want it for a stable contact id. The other option is to allow nothing external now: source-id key derivation belongs to the adapters in src/ingest. Either way, `randomUUID`, `randomBytes`, `randomInt`, `getRandomValues` and `webcrypto` stay banned.
+
+C. **Contact identity.** Adding an `id` to `Contact` later is an edit to contact.ts, which is the exact edit this addendum is trying to avoid. Decide whether to add `readonly id?: string` (or a required one) now, or accept that WTC-16 edits contact.ts once for identity.
+
+D. **Which source ids an inferred value cites (WTC-17).** The planner suggests the value's `sources` cites this contact's own records the inference used, and the foreign record appears only on the inference `Decision`. This is WTC-17's call. The model allows either.
+
+E. **CKB-5 against CKB-1 on low confidence.** CKB-5 step 3 says "low confidence, shown for review", but CKB-1 says low means record only, and CKB-8 queues medium items only. The model does not block either reading. The conflict needs resolving in WTC-17 and WTC-18.
+
+F. **Review decisions (WTC-18).** CKB-8's human choices (merge, keep separate, exclude) are saved and reapplied. "Keep separate" has no `Outcome` value, and adding one later would edit outcome.ts. Decide whether to add it now.
+
+G. **Typecheck over tests.** Resolved: `tsconfig.json` includes `tests`.
+
+H. **Order of values within a field.** Belongs to WTC-16. The model does not enforce an order.
