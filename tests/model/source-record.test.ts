@@ -218,4 +218,114 @@ describe("createSourceRecord defensive copying (criterion 4)", () => {
     expect(record.normalised.fullName).toBe("Ada Example");
     expect(record.normalised.emails).toEqual(["ada@example.com"]);
   });
+
+  it("copies only known NormalisedFields keys and does not carry an off-type extra property (criterion 4 as changed, finding 6)", () => {
+    const extra = { nested: true };
+    const callerNormalised = {
+      fullName: "Ada Example",
+      emails: ["ada@example.com"],
+      phones: [],
+      extra,
+    } as unknown as NormalisedFields;
+
+    const record = createSourceRecord({
+      source: "linkedin",
+      id: "linkedin:ada-example",
+      raw: { Name: "Ada Example" },
+      normalised: callerNormalised,
+    });
+
+    expect(Object.isFrozen(extra)).toBe(false);
+    expect(Object.isFrozen(callerNormalised)).toBe(false);
+    expect(Object.hasOwn(record.normalised, "extra")).toBe(false);
+  });
+
+  it("keeps a __proto__ or constructor raw header as an own property, without changing raw's prototype (criterion 4 as changed, finding 6)", () => {
+    const raw = JSON.parse('{"__proto__":"x","constructor":"y"}') as RawFields;
+
+    const record = createSourceRecord({
+      source: "phone",
+      id: "phone:row-proto",
+      raw,
+      normalised: { emails: [], phones: [] },
+    });
+
+    expect(Object.hasOwn(record.raw, "__proto__")).toBe(true);
+    expect((record.raw as Record<string, unknown>)["__proto__"]).toBe("x");
+    expect(Object.hasOwn(record.raw, "constructor")).toBe(true);
+    expect((record.raw as Record<string, unknown>)["constructor"]).toBe("y");
+
+    const proto = Object.getPrototypeOf(record.raw);
+    expect(proto === Object.prototype || proto === null).toBe(true);
+  });
+});
+
+describe("createSourceRecord id/source agreement (criterion 21, finding 4)", () => {
+  it("throws when source is google but the id is prefixed linkedin:", () => {
+    expect(() =>
+      createSourceRecord({
+        source: "google",
+        id: "linkedin:x" as SourceRecordId,
+        raw: { Name: "Ada Example" },
+        normalised: { emails: [], phones: [] },
+      }),
+    ).toThrow();
+  });
+
+  it("throws when source is google but the id is prefixed google-other:", () => {
+    expect(() =>
+      createSourceRecord({
+        source: "google",
+        id: "google-other:x" as SourceRecordId,
+        raw: { Name: "Ada Example" },
+        normalised: { emails: [], phones: [] },
+      }),
+    ).toThrow();
+  });
+
+  it("throws when source is google-other but the id is prefixed google:", () => {
+    expect(() =>
+      createSourceRecord({
+        source: "google-other",
+        id: "google:x" as SourceRecordId,
+        raw: { Name: "Ada Example" },
+        normalised: { emails: [], phones: [] },
+      }),
+    ).toThrow();
+  });
+
+  it("throws when the key after the prefix is empty, as in phone:", () => {
+    expect(() =>
+      createSourceRecord({
+        source: "phone",
+        id: "phone:" as SourceRecordId,
+        raw: { Name: "Ada Example" },
+        normalised: { emails: [], phones: [] },
+      }),
+    ).toThrow();
+  });
+
+  it("throws when the key after the prefix is whitespace only, as in 'phone:   '", () => {
+    expect(() =>
+      createSourceRecord({
+        source: "phone",
+        id: "phone:   " as SourceRecordId,
+        raw: { Name: "Ada Example" },
+        normalised: { emails: [], phones: [] },
+      }),
+    ).toThrow();
+  });
+
+  it.each(SOURCE_KINDS)("accepts a matching id for source kind %s", (source) => {
+    const id = `${source}:matching-key` as SourceRecordId;
+
+    expect(() =>
+      createSourceRecord({
+        source,
+        id,
+        raw: { Name: "Ada Example" },
+        normalised: { emails: [], phones: [] },
+      }),
+    ).not.toThrow();
+  });
 });

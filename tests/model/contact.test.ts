@@ -1,218 +1,231 @@
 import { describe, expect, it } from "vitest";
 
-import { validateContact } from "../../src/model/contact.js";
-import type { Contact } from "../../src/model/contact.js";
-import { createDecision } from "../../src/model/decision.js";
-import { explain } from "../../src/model/explain.js";
-import type { Decision } from "../../src/model/decision.js";
-import type { PrimarySourced, Sourced } from "../../src/model/provenance.js";
+import { CONTACT_FIELDS, validateContact } from "../../src/model/contact.js";
+import type { Contact, ContactField } from "../../src/model/contact.js";
+import { primaryOf } from "../../src/model/provenance.js";
+import type { PrimarySourced } from "../../src/model/provenance.js";
+import type { NormalisedFields } from "../../src/model/source-record.js";
 
-// Fabricated data only: example.com/.org emails, +44 7700 900xxx phones,
+// Fabricated data only: example.com/.org/.net emails, +44 7700 900xxx phones,
 // "Ada Example" / "Test Person" names, "Example Widgets Ltd" company.
+//
+// Criteria covered here (addendum numbering): 5 (replaced by 15), 6 (widened
+// by 16), 15, 16, 17, 18, 19 [proposed], 20 [proposed], 23 [proposed].
+// explain() moved to explain.test.ts.
 
-const LINKEDIN_ID = "linkedin:ada-example";
-const PHONE_ID = "phone:ada-mobile";
-const GOOGLE_ID = "google:ada-contact";
-
-function buildTwoSourceContact(): Contact {
+function validBaselineContact(): Contact {
   return {
-    givenName: { value: "Ada", sources: [LINKEDIN_ID] },
-    familyName: { value: "Example", sources: [LINKEDIN_ID] },
-    fullName: { value: "Ada Example", sources: [LINKEDIN_ID] },
-    company: { value: "Example Widgets Ltd", sources: [LINKEDIN_ID] },
-    title: { value: "Engineer", sources: [LINKEDIN_ID] },
-    emails: [
-      { value: "ada@example.com", sources: [LINKEDIN_ID], primary: true },
-      { value: "ada.example@example.org", sources: [PHONE_ID], primary: false },
-    ],
-    phones: [
-      { value: "+44 7700 900123", sources: [PHONE_ID], primary: true },
+    givenName: [{ value: "Ada", sources: ["linkedin:given"], primary: true }],
+    familyName: [{ value: "Example", sources: ["linkedin:family"], primary: true }],
+    fullName: [{ value: "Ada Example", sources: ["linkedin:full"], primary: true }],
+    emails: [{ value: "ada@example.com", sources: ["linkedin:email"], primary: true }],
+    phones: [{ value: "+44 7700 900123", sources: ["linkedin:phone"], primary: true }],
+    company: [{ value: "Example Widgets Ltd", sources: ["linkedin:company"], primary: true }],
+    title: [{ value: "Engineer", sources: ["linkedin:title"], primary: true }],
+    linkedinUrl: [
+      { value: "https://linkedin.example.com/in/ada-example", sources: ["linkedin:url"], primary: true },
     ],
   };
 }
 
-describe("Contact provenance shape (criterion 5)", () => {
-  it("carries a { value, sources } pair for each singular field, with a non-empty sources list", () => {
-    const contact = buildTwoSourceContact();
+function emptyContact(): Contact {
+  return {
+    givenName: [],
+    familyName: [],
+    fullName: [],
+    emails: [],
+    phones: [],
+    company: [],
+    title: [],
+    linkedinUrl: [],
+  };
+}
 
-    const fullName: Sourced<string> | undefined = contact.fullName;
-    expect(fullName).toBeDefined();
-    expect(fullName?.value).toBe("Ada Example");
-    expect(fullName?.sources.length).toBeGreaterThan(0);
-    expect(fullName?.sources).toContain(LINKEDIN_ID);
+describe("CONTACT_FIELDS and Contact shape (criteria 15, 18)", () => {
+  it("exposes exactly the eight fields, in this order", () => {
+    expect(CONTACT_FIELDS).toEqual([
+      "givenName",
+      "familyName",
+      "fullName",
+      "emails",
+      "phones",
+      "company",
+      "title",
+      "linkedinUrl",
+    ]);
   });
 
-  it("records which source(s) each email and phone came from, across two different sources", () => {
-    const contact = buildTwoSourceContact();
-
-    const linkedinEmail = contact.emails.find(
-      (email) => email.value === "ada@example.com",
-    );
-    const phoneSourcedEmail = contact.emails.find(
-      (email) => email.value === "ada.example@example.org",
-    );
-
-    expect(linkedinEmail?.sources).toEqual([LINKEDIN_ID]);
-    expect(phoneSourcedEmail?.sources).toEqual([PHONE_ID]);
-
-    const phone = contact.phones[0];
-    expect(phone?.sources).toEqual([PHONE_ID]);
+  it("gives a Contact whose own keys are exactly CONTACT_FIELDS", () => {
+    const contact = validBaselineContact();
+    expect(Object.keys(contact).sort()).toEqual([...CONTACT_FIELDS].sort());
   });
 
-  it("has no problems when every sources list is non-empty and provenance is well formed", () => {
-    expect(validateContact(buildTwoSourceContact())).toEqual([]);
+  it("holds a list of { value, sources, primary } for every field, not just emails/phones", () => {
+    const contact = validBaselineContact();
+    for (const field of CONTACT_FIELDS) {
+      const entries = contact[field];
+      expect(Array.isArray(entries)).toBe(true);
+      expect(entries.length).toBeGreaterThan(0);
+      for (const entry of entries) {
+        expect(entry.sources.length).toBeGreaterThan(0);
+        expect(typeof entry.primary).toBe("boolean");
+      }
+    }
+  });
+
+  it("keyof NormalisedFields equals ContactField exactly (checked at typecheck)", () => {
+    // If this type stops compiling, NormalisedFields (source-record.ts) and
+    // ContactField (contact.ts) have drifted apart -- criterion 18.
+    type IsExactly<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2)
+      ? true
+      : false;
+    type NormalisedKeysMatchContactField = IsExactly<ContactField, keyof NormalisedFields>;
+    const check: NormalisedKeysMatchContactField = true;
+    expect(check).toBe(true);
   });
 });
 
-describe("Contact primary email/phone invariants (criterion 6)", () => {
-  it("allows several emails and several phones with exactly one primary each", () => {
+describe("validateContact: several conflicting values per field (criterion 15)", () => {
+  it("accepts several conflicting company values with exactly one primary and distinct sources", () => {
     const contact: Contact = {
-      fullName: { value: "Test Person", sources: [GOOGLE_ID] },
-      emails: [
-        { value: "test.person@example.com", sources: [GOOGLE_ID], primary: true },
-        { value: "test.person@example.net", sources: [LINKEDIN_ID], primary: false },
-      ],
-      phones: [
-        { value: "+44 7700 900456", sources: [GOOGLE_ID], primary: true },
-        { value: "555-0199", sources: [PHONE_ID], primary: false },
+      ...validBaselineContact(),
+      company: [
+        { value: "Example Widgets Ltd", sources: ["linkedin:company"], primary: true },
+        { value: "Example Widgets Holdings", sources: ["google:company"], primary: false },
       ],
     };
 
     expect(validateContact(contact)).toEqual([]);
   });
 
-  it("reports a problem when no email is marked primary", () => {
+  it("accepts several conflicting given names with exactly one primary and distinct sources", () => {
     const contact: Contact = {
-      fullName: { value: "Test Person", sources: [GOOGLE_ID] },
-      emails: [
-        { value: "test.person@example.com", sources: [GOOGLE_ID], primary: false },
-      ],
-      phones: [],
-    };
-
-    const problems = validateContact(contact);
-    expect(problems.length).toBeGreaterThan(0);
-  });
-
-  it("reports a problem when more than one email is marked primary", () => {
-    const contact: Contact = {
-      fullName: { value: "Test Person", sources: [GOOGLE_ID] },
-      emails: [
-        { value: "test.person@example.com", sources: [GOOGLE_ID], primary: true },
-        { value: "test.person@example.org", sources: [LINKEDIN_ID], primary: true },
-      ],
-      phones: [],
-    };
-
-    const problems = validateContact(contact);
-    expect(problems.length).toBeGreaterThan(0);
-  });
-
-  it("reports a problem when no phone is marked primary but at least one phone exists", () => {
-    const contact: Contact = {
-      fullName: { value: "Test Person", sources: [GOOGLE_ID] },
-      emails: [],
-      phones: [
-        { value: "+44 7700 900456", sources: [PHONE_ID], primary: false },
+      ...validBaselineContact(),
+      givenName: [
+        { value: "Ada", sources: ["linkedin:given"], primary: true },
+        { value: "A.", sources: ["google:given"], primary: false },
       ],
     };
 
-    const problems = validateContact(contact);
-    expect(problems.length).toBeGreaterThan(0);
+    expect(validateContact(contact)).toEqual([]);
   });
 
-  it("reports a problem when more than one phone is marked primary", () => {
+  it("accepts an inferred company value with inferredBy set", () => {
     const contact: Contact = {
-      fullName: { value: "Test Person", sources: [GOOGLE_ID] },
-      emails: [],
-      phones: [
-        { value: "+44 7700 900456", sources: [PHONE_ID], primary: true },
-        { value: "555-0199", sources: [GOOGLE_ID], primary: true },
-      ],
+      ...validBaselineContact(),
+      company: [{ value: "Example Widgets Ltd", sources: ["linkedin:company"], primary: true, inferredBy: "C2" }],
     };
 
-    const problems = validateContact(contact);
-    expect(problems.length).toBeGreaterThan(0);
+    expect(validateContact(contact)).toEqual([]);
   });
 
-  it("reports a problem when a field value has an empty sources list", () => {
-    const badEmail: PrimarySourced<string> = {
+  it("accepts a contact with every field empty", () => {
+    expect(validateContact(emptyContact())).toEqual([]);
+  });
+});
+
+const DEFECT_A = "linkedin:defect-a";
+const DEFECT_B = "linkedin:defect-b";
+const DEFECT_SINGLE = "linkedin:defect-single";
+
+interface SingleFieldDefect {
+  label: string;
+  entries: PrimarySourced<string>[];
+}
+
+const SINGLE_FIELD_DEFECTS: SingleFieldDefect[] = [
+  {
+    label: "an entry with an empty sources list",
+    entries: [{ value: "Example value", sources: [], primary: true }],
+  },
+  {
+    label: "no entry marked primary, with two entries",
+    entries: [
+      { value: "Example value A", sources: [DEFECT_A], primary: false },
+      { value: "Example value B", sources: [DEFECT_B], primary: false },
+    ],
+  },
+  {
+    label: "more than one entry marked primary",
+    entries: [
+      { value: "Example value A", sources: [DEFECT_A], primary: true },
+      { value: "Example value B", sources: [DEFECT_B], primary: true },
+    ],
+  },
+  {
+    label: "inferredBy is an empty string",
+    entries: [{ value: "Example value", sources: [DEFECT_SINGLE], primary: true, inferredBy: "" }],
+  },
+  {
+    label: "inferredBy is whitespace only",
+    entries: [{ value: "Example value", sources: [DEFECT_SINGLE], primary: true, inferredBy: "   " }],
+  },
+  {
+    label: "two entries with the same value (criterion 20 [proposed])",
+    entries: [
+      { value: "Example value", sources: [DEFECT_A], primary: true },
+      { value: "Example value", sources: [DEFECT_B], primary: false },
+    ],
+  },
+];
+
+describe("validateContact: exactly one problem per single-field defect (criteria 16, 17, 20 [proposed]; message format per criterion 19 [proposed])", () => {
+  for (const field of CONTACT_FIELDS) {
+    describe(`field: ${field}`, () => {
+      for (const defect of SINGLE_FIELD_DEFECTS) {
+        it(`${defect.label} -> exactly one problem, prefixed with "${field}"`, () => {
+          const contact: Contact = { ...validBaselineContact(), [field]: defect.entries };
+
+          const problems = validateContact(contact);
+
+          expect(problems).toHaveLength(1);
+          expect(problems[0]?.startsWith(field)).toBe(true);
+        });
+      }
+    });
+  }
+});
+
+describe("validateContact: baseline sanity", () => {
+  it("has no problems for a fully valid baseline contact", () => {
+    expect(validateContact(validBaselineContact())).toEqual([]);
+  });
+});
+
+describe("primaryOf (criterion 23 [proposed])", () => {
+  it("returns the entry marked primary", () => {
+    const values: readonly PrimarySourced<string>[] = [
+      { value: "test.person@example.com", sources: ["google:e1"], primary: false },
+      { value: "test.person@example.org", sources: ["linkedin:e2"], primary: true },
+    ];
+
+    expect(primaryOf(values)).toEqual(values[1]);
+  });
+
+  it("returns undefined for an empty list", () => {
+    expect(primaryOf([])).toBeUndefined();
+  });
+
+  it("returns undefined for a non-empty list with no primary entry", () => {
+    const values: readonly PrimarySourced<string>[] = [
+      { value: "test.person@example.com", sources: ["google:e1"], primary: false },
+    ];
+
+    expect(primaryOf(values)).toBeUndefined();
+  });
+
+  it("returns the first primary entry when (invalidly) more than one is marked primary", () => {
+    const first: PrimarySourced<string> = {
       value: "test.person@example.com",
-      sources: [],
+      sources: ["google:e1"],
       primary: true,
     };
-    const contact: Contact = {
-      fullName: { value: "Test Person", sources: [GOOGLE_ID] },
-      emails: [badEmail],
-      phones: [],
+    const second: PrimarySourced<string> = {
+      value: "test.person@example.org",
+      sources: ["linkedin:e2"],
+      primary: true,
     };
 
-    const problems = validateContact(contact);
-    expect(problems.length).toBeGreaterThan(0);
-  });
-
-  it("has no problems for a contact with zero emails and zero phones", () => {
-    const contact: Contact = {
-      fullName: { value: "Test Person", sources: [GOOGLE_ID] },
-      emails: [],
-      phones: [],
-    };
-
-    expect(validateContact(contact)).toEqual([]);
-  });
-});
-
-describe("explain (criterion 11)", () => {
-  it("returns decisions whose sourceRecordIds overlap a source id cited by the contact", () => {
-    const contact = buildTwoSourceContact();
-
-    const relevantDecision = createDecision({
-      ruleId: "M1",
-      sourceRecordIds: [LINKEDIN_ID, PHONE_ID],
-      outcome: "merged",
-      confidence: "high",
-      reason: "Same email address across LinkedIn and phone exports.",
-    });
-    const unrelatedDecision = createDecision({
-      ruleId: "M4",
-      sourceRecordIds: ["google:someone-else"],
-      outcome: "flagged-for-review",
-      confidence: "medium",
-      reason: "Same full name and company, different contact entirely.",
-    });
-
-    const decisions: Decision[] = [relevantDecision, unrelatedDecision];
-
-    const result = explain(contact, decisions);
-
-    expect(result).toEqual([relevantDecision]);
-  });
-
-  it("returns an empty array when no decision cites any of the contact's source ids", () => {
-    const contact = buildTwoSourceContact();
-    const unrelatedDecision = createDecision({
-      ruleId: "M2",
-      sourceRecordIds: ["google:someone-else"],
-      outcome: "merged",
-      confidence: "high",
-      reason: "Same phone number, unrelated contact.",
-    });
-
-    expect(explain(contact, [unrelatedDecision])).toEqual([]);
-  });
-
-  it("includes a decision that partially overlaps the contact's source ids", () => {
-    const contact = buildTwoSourceContact();
-    const partiallyOverlapping = createDecision({
-      ruleId: "M2",
-      sourceRecordIds: [PHONE_ID, "google:someone-else"],
-      outcome: "merged",
-      confidence: "high",
-      reason: "Same phone number as an unrelated third record.",
-    });
-
-    expect(explain(contact, [partiallyOverlapping])).toEqual([
-      partiallyOverlapping,
-    ]);
+    expect(primaryOf([first, second])).toEqual(first);
   });
 });

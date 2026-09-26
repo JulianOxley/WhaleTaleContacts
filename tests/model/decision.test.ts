@@ -6,15 +6,19 @@ import { createDecision } from "../../src/model/decision.js";
 import type { Decision } from "../../src/model/decision.js";
 import { OUTCOMES } from "../../src/model/outcome.js";
 import type { Outcome } from "../../src/model/outcome.js";
+import type { SourceRecordId } from "../../src/model/source-record.js";
 
 // Fabricated data only: example.com emails, +44 7700 900xxx phones, fictional source ids.
 
-describe("OUTCOMES / Outcome (criterion 8)", () => {
-  it("exposes exactly merged, excluded, flagged-for-review and inferred, and no others", () => {
-    expect(OUTCOMES).toHaveLength(4);
-    expect(new Set(OUTCOMES)).toEqual(
-      new Set(["merged", "excluded", "flagged-for-review", "inferred"]),
-    );
+describe("OUTCOMES / Outcome (criterion 24, replaces criterion 8)", () => {
+  it("exposes exactly merged, excluded, flagged-for-review, inferred and kept-separate, in that order", () => {
+    expect(OUTCOMES).toEqual([
+      "merged",
+      "excluded",
+      "flagged-for-review",
+      "inferred",
+      "kept-separate",
+    ]);
   });
 
   it("is usable as a runtime enumeration", () => {
@@ -133,6 +137,49 @@ describe("Decision shape (criterion 7)", () => {
         reason: "   ",
       }),
     ).toThrow();
+  });
+
+  it("rejects an empty ruleId (criterion 22, finding 6)", () => {
+    expect(() =>
+      createDecision({
+        ruleId: "",
+        sourceRecordIds: ["linkedin:ada-example"],
+        outcome: "merged",
+        confidence: "high",
+        reason: "Some reason.",
+      }),
+    ).toThrow();
+  });
+
+  it("rejects a ruleId that is only whitespace (criterion 22, finding 6)", () => {
+    expect(() =>
+      createDecision({
+        ruleId: "   ",
+        sourceRecordIds: ["linkedin:ada-example"],
+        outcome: "merged",
+        confidence: "high",
+        reason: "Some reason.",
+      }),
+    ).toThrow();
+  });
+
+  it("is unaffected by later mutation of the caller's sourceRecordIds array (finding 6)", () => {
+    const sourceRecordIds: SourceRecordId[] = ["linkedin:ada-example", "phone:ada-mobile"];
+    const decision = createDecision({
+      ruleId: "M1",
+      sourceRecordIds,
+      outcome: "merged",
+      confidence: "high",
+      reason: "Same email address on both records.",
+    });
+
+    sourceRecordIds.push("google:extra-record");
+    sourceRecordIds[0] = "google:mutated-in-place";
+
+    expect(decision.sourceRecordIds).toEqual([
+      "linkedin:ada-example",
+      "phone:ada-mobile",
+    ]);
   });
 
   it("returns a frozen decision", () => {
