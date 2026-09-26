@@ -418,3 +418,15 @@ A second cold review found the model code correct and every first-review fix clo
 
 - **model-developer**: `src/model/contact.ts` (16 as changed), `src/model/source-record.ts` (30).
 - **tester**: `tests/model/purity-scan.ts`, `tests/model/purity-scan.test.ts`, `tests/model/purity.test.ts` (25 to 29, 31), `tests/model/contact.test.ts` (16 as changed, 31), `tests/model/source-record.test.ts` (30).
+
+### Final review pass (2026-09-26)
+
+Verdict: ready for a PR. Two small fixes are made before it opens:
+
+28 (extended). `toLocaleLowerCase` and `toLocaleUpperCase` join the banned member names. They depend on the machine's locale (for example, Turkish `"I"` lowercases to `"ı"`), and a normalisation rule author is likely to reach for them. Also pin `import { randomBytes as createHash } from "node:crypto"` as rejected (criterion 29).
+
+32. [final review] Doc comments in `src/model/contact.ts` and `src/model/provenance.ts` state criterion 16 as changed. In particular, `primaryOf` can return `undefined` for a non-empty field when every entry is inferred.
+
+**Note for WTC-17 and whoever writes the export (not a WTC-11 change).** The zero-primary exemption depends on `inferredBy` being present, not on confidence, and it applies to every field, including emails and phones. A high-confidence inferred value (CKB-5 step 2) must therefore be set `primary: true` explicitly, or `validateContact` will accept it and the export will leave it out. The model cannot see confidence on a value; that stays on the `Decision`.
+
+Accepted nits, not fixed: off-type `raw` values are protected one level deep only; the scanner flags some type-only uses such as `typeof Date` and `Intl.Collator` (fails safe); the wider purity file globs have no fixture test.
